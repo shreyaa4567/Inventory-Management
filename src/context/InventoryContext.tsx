@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useCallback, type ReactNode
 // ========== Types ==========
 
 export type UserRole = 'Admin' | 'Manager' | 'Staff';
-export type StockAction = 'Added' | 'Updated' | 'Removed' | 'Purchased' | 'Sold';
+export type StockAction = 'Added' | 'Updated' | 'Removed' | 'Purchased' | 'Sold' | 'Imported' | 'Exported';
 
 export interface Product {
   id: number;
@@ -61,6 +61,41 @@ export interface PurchaseOrder {
   total: string;
   date: string;
   status: 'Delivered' | 'Pending' | 'In Transit' | 'Cancelled';
+}
+
+export interface SupplierBillItem {
+  productId: number;
+  productName: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
+export interface SupplierBill {
+  id: string;
+  supplierId: number;
+  supplierName: string;
+  items: SupplierBillItem[];
+  grandTotal: number;
+  date: string;
+  createdBy: string;
+}
+
+export interface CustomerBillItem {
+  productId: number;
+  productName: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
+export interface CustomerBill {
+  id: string;
+  customerName: string;
+  items: CustomerBillItem[];
+  grandTotal: number;
+  date: string;
+  createdBy: string;
 }
 
 // ========== Permissions ==========
@@ -159,6 +194,8 @@ interface InventoryContextType {
   users: AppUser[];
   movements: MovementRecord[];
   orders: PurchaseOrder[];
+  supplierBills: SupplierBill[];
+  customerBills: CustomerBill[];
   currentUser: AppUser;
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setSuppliers: React.Dispatch<React.SetStateAction<Supplier[]>>;
@@ -167,6 +204,8 @@ interface InventoryContextType {
   addMovement: (m: Omit<MovementRecord, 'id'>) => void;
   addProducts: (newProducts: Omit<Product, 'id' | 'status'>[]) => void;
   getStatus: (qty: number, minStock: number) => Product['status'];
+  addSupplierBill: (supplierId: number, supplierName: string, items: Omit<SupplierBillItem, 'total'>[]) => void;
+  addCustomerBill: (customerName: string, items: Omit<CustomerBillItem, 'total'>[]) => { success: boolean; error?: string };
   lowStockProducts: Product[];
   expiringProducts: Product[];
   stockForecasts: { product: Product; daysRemaining: number }[];
@@ -187,6 +226,8 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [users, setUsers] = useState<AppUser[]>(initialUsers);
   const [movements, setMovements] = useState<MovementRecord[]>(initialMovements);
   const [orders, setOrders] = useState<PurchaseOrder[]>(initialOrders);
+  const [supplierBills, setSupplierBills] = useState<SupplierBill[]>([]);
+  const [customerBills, setCustomerBills] = useState<CustomerBill[]>([]);
   const currentUser = users[0]; // Admin by default
 
   const getStatus = (qty: number, minStock: number): Product['status'] => {
@@ -211,6 +252,59 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     });
   }, [addMovement, currentUser.name]);
 
+  const addSupplierBill = useCallback((supplierId: number, supplierName: string, items: Omit<SupplierBillItem, 'total'>[]) => {
+    const billItems: SupplierBillItem[] = items.map(it => ({ ...it, total: it.quantity * it.price }));
+    const grandTotal = billItems.reduce((s, it) => s + it.total, 0);
+    const billId = `SUP-${String(supplierBills.length + 1).padStart(3, '0')}`;
+    const bill: SupplierBill = {
+      id: billId, supplierId, supplierName, items: billItems, grandTotal,
+      date: new Date().toISOString().split('T')[0], createdBy: currentUser.name,
+    };
+    setSupplierBills(prev => [bill, ...prev]);
+    // Increase product quantities
+    setProducts(prev => prev.map(p => {
+      const item = billItems.find(it => it.productId === p.id);
+      if (!item) return p;
+      const newQty = p.quantity + item.quantity;
+      return { ...p, quantity: newQty, status: getStatus(newQty, p.minStock) };
+    }));
+    // Record movements
+    billItems.forEach(it => {
+      addMovement({ productId: it.productId, productName: it.productName, action: 'Imported', quantityChange: it.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
+    });
+    // Update supplier orders count
+    setSuppliers(prev => prev.map(s => s.id === supplierId ? { ...s, totalOrders: s.totalOrders + 1 } : s));
+  }, [supplierBills.length, currentUser.name, addMovement, getStatus]);
+
+  const addCustomerBill = useCallback((customerName: string, items: Omit<CustomerBillItem, 'total'>[]): { success: boolean; error?: string } => {
+    // Validate stock
+    for (const it of items) {
+      const product = products.find(p => p.id === it.productId);
+      if (!product) return { success: false, error: `Product not found.` };
+      if (it.quantity > product.quantity) return { success: false, error: `Not enough inventory available for ${product.name}. Available: ${product.quantity}` };
+    }
+    const billItems: CustomerBillItem[] = items.map(it => ({ ...it, total: it.quantity * it.price }));
+    const grandTotal = billItems.reduce((s, it) => s + it.total, 0);
+    const billId = `CUS-${String(customerBills.length + 1).padStart(3, '0')}`;
+    const bill: CustomerBill = {
+      id: billId, customerName, items: billItems, grandTotal,
+      date: new Date().toISOString().split('T')[0], createdBy: currentUser.name,
+    };
+    setCustomerBills(prev => [bill, ...prev]);
+    // Decrease product quantities
+    setProducts(prev => prev.map(p => {
+      const item = billItems.find(it => it.productId === p.id);
+      if (!item) return p;
+      const newQty = p.quantity - item.quantity;
+      return { ...p, quantity: newQty, status: getStatus(newQty, p.minStock) };
+    }));
+    // Record movements
+    billItems.forEach(it => {
+      addMovement({ productId: it.productId, productName: it.productName, action: 'Exported', quantityChange: -it.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
+    });
+    return { success: true };
+  }, [customerBills.length, products, currentUser.name, addMovement, getStatus]);
+
   // Derived data
   const lowStockProducts = products.filter(p => p.quantity > 0 && p.quantity <= p.minStock);
 
@@ -234,9 +328,9 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   return (
     <InventoryContext.Provider value={{
-      products, suppliers, users, movements, orders, currentUser,
+      products, suppliers, users, movements, orders, supplierBills, customerBills, currentUser,
       setProducts, setSuppliers, setUsers, setOrders,
-      addMovement, addProducts, getStatus,
+      addMovement, addProducts, getStatus, addSupplierBill, addCustomerBill,
       lowStockProducts, expiringProducts, stockForecasts, reorderSuggestions,
     }}>
       {children}

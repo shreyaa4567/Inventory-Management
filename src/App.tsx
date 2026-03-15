@@ -11,6 +11,8 @@ import PurchaseOrderPage from './pages/PurchaseOrderPage';
 import UserPage from './pages/UserPage';
 import WarehouseMapPage from './pages/WarehouseMapPage';
 import PickRoutePage from './pages/PickRoutePage';
+import SupplierBillsPage from './pages/SupplierBillsPage';
+import CustomerBillsPage from './pages/CustomerBillsPage';
 
 const App: React.FC = () => {
   return (
@@ -24,6 +26,8 @@ const App: React.FC = () => {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/suppliers" element={<SuppliersPage />} />
             <Route path="/purchase-orders" element={<PurchaseOrderPage />} />
+            <Route path="/supplier-bills" element={<SupplierBillsPage />} />
+            <Route path="/customer-bills" element={<CustomerBillsPage />} />
             <Route path="/users" element={<UserPage />} />
             <Route path="/warehouse-map" element={<WarehouseMapPage />} />
             <Route path="/pick-route" element={<PickRoutePage />} />
@@ -35,3 +39,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

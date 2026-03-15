@@ -2,7 +2,7 @@ import React from 'react';
 import { useInventory } from '../context/InventoryContext';
 import {
   Package, AlertTriangle, Truck, ShoppingCart, TrendingUp, TrendingDown,
-  Clock, CheckCircle, XCircle, AlertCircle, CalendarClock, BarChart3, Zap,
+  Clock, CheckCircle, XCircle, AlertCircle, CalendarClock, BarChart3, Zap, DollarSign, ArrowDownToLine, ArrowUpFromLine,
 } from 'lucide-react';
 
 const actionIcons: Record<string, React.ReactNode> = {
@@ -11,17 +11,21 @@ const actionIcons: Record<string, React.ReactNode> = {
   Updated: <AlertCircle size={14} style={{ color: '#f59e0b' }} />,
   Purchased: <CheckCircle size={14} style={{ color: '#3b82f6' }} />,
   Removed: <XCircle size={14} style={{ color: '#ef4444' }} />,
+  Imported: <ArrowDownToLine size={14} style={{ color: '#3b82f6' }} />,
+  Exported: <ArrowUpFromLine size={14} style={{ color: '#f97316' }} />,
 };
 
 const DashboardPage: React.FC = () => {
   const { products, suppliers, orders, movements, lowStockProducts, expiringProducts, stockForecasts, reorderSuggestions, setOrders } = useInventory();
   const totalProducts = products.reduce((s, p) => s + p.quantity, 0);
+  const totalValue = products.reduce((s, p) => s + p.quantity * p.price, 0);
 
   const stats = [
     { label: 'Total Products', value: totalProducts.toLocaleString(), change: '+12.5%', dir: 'up', icon: Package },
     { label: 'Low Stock Items', value: String(lowStockProducts.length), change: lowStockProducts.length > 0 ? 'Alert' : 'OK', dir: lowStockProducts.length > 0 ? 'down' : 'up', icon: AlertTriangle },
     { label: 'Total Suppliers', value: String(suppliers.length), change: '+8.1%', dir: 'up', icon: Truck },
     { label: 'Total Orders', value: String(orders.length), change: '+18.2%', dir: 'up', icon: ShoppingCart },
+    { label: 'Inventory Value', value: `₹${(totalValue / 100000).toFixed(1)}L`, change: '+5.3%', dir: 'up', icon: DollarSign },
   ];
 
   const handleAutoReorder = (r: typeof reorderSuggestions[0]) => {

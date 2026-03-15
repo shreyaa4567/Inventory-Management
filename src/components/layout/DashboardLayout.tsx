@@ -9,6 +9,8 @@ const pageTitles: Record<string, string> = {
   '/inventory': 'Product Management',
   '/suppliers': 'Supplier Management',
   '/purchase-orders': 'Purchase Orders',
+  '/supplier-bills': 'Supplier Bills',
+  '/customer-bills': 'Customer Bills',
   '/users': 'User Management',
 };
 

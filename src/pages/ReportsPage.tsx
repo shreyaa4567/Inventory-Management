@@ -1,14 +1,34 @@
 import React from 'react';
 import { useInventory } from '../context/InventoryContext';
-import { AlertTriangle, Package, DollarSign, BarChart3 } from 'lucide-react';
+import { AlertTriangle, Package, DollarSign, BarChart3, TrendingUp, TrendingDown, ShoppingCart, Truck } from 'lucide-react';
 
 const ReportsPage: React.FC = () => {
-  const { products, lowStockProducts } = useInventory();
+  const { products, lowStockProducts, supplierBills, customerBills } = useInventory();
 
   const totalProducts = products.reduce((s, p) => s + p.quantity, 0);
   const totalValue = products.reduce((s, p) => s + p.quantity * p.price, 0);
   const categories = [...new Set(products.map(p => p.category))];
   const outOfStock = products.filter(p => p.status === 'Out of Stock').length;
+
+  // Billing aggregates
+  const totalPurchaseValue = supplierBills.reduce((s, b) => s + b.grandTotal, 0);
+  const totalSalesValue = customerBills.reduce((s, b) => s + b.grandTotal, 0);
+
+  // Top selling products (from customer bills)
+  const soldMap = new Map<number, { name: string; qty: number; value: number }>();
+  customerBills.forEach(b => b.items.forEach(it => {
+    const existing = soldMap.get(it.productId) || { name: it.productName, qty: 0, value: 0 };
+    soldMap.set(it.productId, { name: it.productName, qty: existing.qty + it.quantity, value: existing.value + it.total });
+  }));
+  const topSelling = [...soldMap.entries()].sort((a, b) => b[1].qty - a[1].qty).slice(0, 8);
+
+  // Most purchased products (from supplier bills)
+  const purchasedMap = new Map<number, { name: string; qty: number; value: number }>();
+  supplierBills.forEach(b => b.items.forEach(it => {
+    const existing = purchasedMap.get(it.productId) || { name: it.productName, qty: 0, value: 0 };
+    purchasedMap.set(it.productId, { name: it.productName, qty: existing.qty + it.quantity, value: existing.value + it.total });
+  }));
+  const mostPurchased = [...purchasedMap.entries()].sort((a, b) => b[1].qty - a[1].qty).slice(0, 8);
 
   const categoryData = categories.map(cat => {
     const catProducts = products.filter(p => p.category === cat);
@@ -20,12 +40,20 @@ const ReportsPage: React.FC = () => {
 
   return (
     <div>
-      {/* Summary Cards */}
+      {/* Inventory Summary Cards */}
       <div className="stats-grid fade-in-up" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.25rem' }}>
         <div className="stat-card"><div className="stat-card-icon"><Package size={24} /></div><div className="stat-card-value">{totalProducts.toLocaleString()}</div><div className="stat-card-label">Total Units</div></div>
         <div className="stat-card"><div className="stat-card-icon"><DollarSign size={24} /></div><div className="stat-card-value">₹{(totalValue / 100000).toFixed(1)}L</div><div className="stat-card-label">Inventory Value</div></div>
         <div className="stat-card"><div className="stat-card-icon"><BarChart3 size={24} /></div><div className="stat-card-value">{categories.length}</div><div className="stat-card-label">Categories</div></div>
         <div className="stat-card"><div className="stat-card-icon"><AlertTriangle size={24} /></div><div className="stat-card-value">{outOfStock}</div><div className="stat-card-label">Out of Stock</div></div>
+      </div>
+
+      {/* Billing Summary Cards */}
+      <div className="stats-grid fade-in-up" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1.25rem', animationDelay: '0.05s' }}>
+        <div className="stat-card"><div className="stat-card-icon"><Truck size={24} /></div><div className="stat-card-value">₹{totalPurchaseValue.toLocaleString()}</div><div className="stat-card-label">Total Purchase Value</div></div>
+        <div className="stat-card"><div className="stat-card-icon"><ShoppingCart size={24} /></div><div className="stat-card-value">₹{totalSalesValue.toLocaleString()}</div><div className="stat-card-label">Total Sales Value</div></div>
+        <div className="stat-card"><div className="stat-card-icon"><TrendingUp size={24} /></div><div className="stat-card-value">{topSelling.length}</div><div className="stat-card-label">Top Selling Products</div></div>
+        <div className="stat-card"><div className="stat-card-icon"><TrendingDown size={24} /></div><div className="stat-card-value">{mostPurchased.length}</div><div className="stat-card-label">Most Purchased Products</div></div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.25rem' }}>
@@ -63,8 +91,47 @@ const ReportsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Top Selling and Most Purchased Tables */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.25rem' }}>
+        <div className="content-card fade-in-up" style={{ animationDelay: '0.2s' }}>
+          <div className="content-card-header"><h3>Top Selling Products</h3></div>
+          <table className="data-table">
+            <thead><tr><th>Product</th><th>Units Sold</th><th>Revenue</th></tr></thead>
+            <tbody>
+              {topSelling.length === 0 ? (
+                <tr><td colSpan={3} style={{ textAlign: 'center', padding: '1.5rem', color: '#9ca3af' }}>No sales data yet</td></tr>
+              ) : topSelling.map(([id, data]) => (
+                <tr key={id}>
+                  <td style={{ fontWeight: 600 }}>{data.name}</td>
+                  <td style={{ fontWeight: 700, color: '#16a34a' }}>{data.qty}</td>
+                  <td>₹{data.value.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="content-card fade-in-up" style={{ animationDelay: '0.25s' }}>
+          <div className="content-card-header"><h3>Most Purchased Products</h3></div>
+          <table className="data-table">
+            <thead><tr><th>Product</th><th>Units Purchased</th><th>Cost</th></tr></thead>
+            <tbody>
+              {mostPurchased.length === 0 ? (
+                <tr><td colSpan={3} style={{ textAlign: 'center', padding: '1.5rem', color: '#9ca3af' }}>No purchase data yet</td></tr>
+              ) : mostPurchased.map(([id, data]) => (
+                <tr key={id}>
+                  <td style={{ fontWeight: 600 }}>{data.name}</td>
+                  <td style={{ fontWeight: 700, color: '#2563eb' }}>{data.qty}</td>
+                  <td>₹{data.value.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Low Stock Report */}
-      <div className="content-card fade-in-up" style={{ animationDelay: '0.2s' }}>
+      <div className="content-card fade-in-up" style={{ animationDelay: '0.3s' }}>
         <div className="content-card-header"><h3>Low Stock Report ({lowStockProducts.length} items)</h3></div>
         <table className="data-table">
           <thead>
@@ -99,3 +166,4 @@ const ReportsPage: React.FC = () => {
 };
 
 export default ReportsPage;
+
