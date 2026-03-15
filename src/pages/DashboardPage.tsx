@@ -18,7 +18,7 @@ const actionIcons: Record<string, React.ReactNode> = {
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { products, suppliers, orders, movements, lowStockProducts, expiringProducts, stockForecasts, reorderSuggestions, setOrders } = useInventory();
+  const { products, suppliers, orders, movements, lowStockProducts, expiringProducts, stockForecasts, reorderSuggestions } = useInventory();
   const totalProducts = products.reduce((s, p) => s + p.quantity, 0);
   const totalValue = products.reduce((s, p) => s + p.quantity * p.price, 0);
 
