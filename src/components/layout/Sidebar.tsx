@@ -47,9 +47,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             <span>IMS</span>
           </div>
           <div className="sidebar-profile">
-            <div className="sidebar-avatar">JD</div>
+            <div className="sidebar-avatar">MK</div>
             <div className="sidebar-profile-info">
-              <h4>John Doe</h4>
+              <h4>Meena Kumar</h4>
               <span>Administrator</span>
             </div>
           </div>

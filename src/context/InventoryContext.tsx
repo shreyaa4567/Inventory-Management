@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
 
 // ========== Types ==========
 
@@ -54,6 +54,14 @@ export interface MovementRecord {
   user: string;
 }
 
+export interface PurchaseOrderItem {
+  productId: number;
+  productName: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
 export interface PurchaseOrder {
   id: string;
   supplier: string;
@@ -61,6 +69,7 @@ export interface PurchaseOrder {
   total: string;
   date: string;
   status: 'Delivered' | 'Pending' | 'In Transit' | 'Cancelled';
+  orderItems?: PurchaseOrderItem[];
 }
 
 export interface SupplierBillItem {
@@ -96,6 +105,16 @@ export interface CustomerBill {
   grandTotal: number;
   date: string;
   createdBy: string;
+}
+
+export type NotificationType = 'info' | 'warning' | 'success';
+
+export interface AppNotification {
+  id: number;
+  message: string;
+  type: NotificationType;
+  timestamp: string;
+  read: boolean;
 }
 
 // ========== Permissions ==========
@@ -156,7 +175,7 @@ const initialSuppliers: Supplier[] = [
 ];
 
 const initialUsers: AppUser[] = [
-  { id: 1, name: 'John Doe', email: 'john.doe@ims.com', role: 'Admin', department: 'Management', lastActive: '2 min ago', status: 'Active' },
+  { id: 1, name: 'Meena Kumar', email: 'meena.kumar@ims.com', role: 'Admin', department: 'Management', lastActive: '2 min ago', status: 'Active' },
   { id: 2, name: 'Priya Singh', email: 'priya.singh@ims.com', role: 'Manager', department: 'Procurement', lastActive: '1 hour ago', status: 'Active' },
   { id: 3, name: 'Amit Gupta', email: 'amit.gupta@ims.com', role: 'Staff', department: 'Warehouse', lastActive: '3 hours ago', status: 'Active' },
   { id: 4, name: 'Mehul Patel', email: 'mehul.patel@ims.com', role: 'Staff', department: 'Inventory', lastActive: '1 day ago', status: 'Active' },
@@ -196,6 +215,8 @@ interface InventoryContextType {
   orders: PurchaseOrder[];
   supplierBills: SupplierBill[];
   customerBills: CustomerBill[];
+  notifications: AppNotification[];
+  unreadCount: number;
   currentUser: AppUser;
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setSuppliers: React.Dispatch<React.SetStateAction<Supplier[]>>;
@@ -204,8 +225,12 @@ interface InventoryContextType {
   addMovement: (m: Omit<MovementRecord, 'id'>) => void;
   addProducts: (newProducts: Omit<Product, 'id' | 'status'>[]) => void;
   getStatus: (qty: number, minStock: number) => Product['status'];
+  updateOrderStatus: (id: string, newStatus: PurchaseOrder['status']) => void;
   addSupplierBill: (supplierId: number, supplierName: string, items: Omit<SupplierBillItem, 'total'>[]) => void;
   addCustomerBill: (customerName: string, items: Omit<CustomerBillItem, 'total'>[]) => { success: boolean; error?: string };
+  addNotification: (message: string, type: NotificationType) => void;
+  markNotificationRead: (id: number) => void;
+  markAllNotificationsRead: () => void;
   lowStockProducts: Product[];
   expiringProducts: Product[];
   stockForecasts: { product: Product; daysRemaining: number }[];
@@ -230,6 +255,38 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [customerBills, setCustomerBills] = useState<CustomerBill[]>([]);
   const currentUser = users[0]; // Admin by default
 
+  // Build initial notifications from low stock + expiry alerts
+  const buildInitialNotifications = (): AppNotification[] => {
+    const notifs: AppNotification[] = [];
+    let nid = 1;
+    initialProducts.forEach(p => {
+      if (p.quantity > 0 && p.quantity <= p.minStock) {
+        notifs.push({ id: nid++, message: `Low stock alert: ${p.name} only ${p.quantity} units remaining`, type: 'warning', timestamp: new Date().toISOString(), read: false });
+      }
+      if (p.expiryDate) {
+        const diff = (new Date(p.expiryDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+        if (diff >= 0 && diff <= 7) {
+          notifs.push({ id: nid++, message: `Product ${p.name} expiring in ${Math.ceil(diff)} day(s)`, type: 'warning', timestamp: new Date().toISOString(), read: false });
+        }
+      }
+    });
+    return notifs;
+  };
+  const [notifications, setNotifications] = useState<AppNotification[]>(buildInitialNotifications);
+  const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+
+  const addNotification = useCallback((message: string, type: NotificationType) => {
+    setNotifications(prev => [{ id: Date.now(), message, type, timestamp: new Date().toISOString(), read: false }, ...prev]);
+  }, []);
+
+  const markNotificationRead = useCallback((id: number) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  }, []);
+
+  const markAllNotificationsRead = useCallback(() => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  }, []);
+
   const getStatus = (qty: number, minStock: number): Product['status'] => {
     if (qty === 0) return 'Out of Stock';
     if (qty <= minStock) return 'Low Stock';
@@ -249,8 +306,38 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     setProducts(prev => [...prev, ...created]);
     created.forEach(p => {
       addMovement({ productId: p.id, productName: p.name, action: 'Added', quantityChange: p.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
+      addNotification(`New product added: ${p.name}`, 'success');
     });
-  }, [addMovement, currentUser.name]);
+  }, [addMovement, addNotification, currentUser.name]);
+
+  const updateOrderStatus = useCallback((id: string, newStatus: PurchaseOrder['status']) => {
+    setOrders(prev => {
+      const order = prev.find(o => o.id === id);
+      if (!order) return prev;
+      
+      // If transitioning to Delivered, sync inventory
+      if (order.status !== 'Delivered' && newStatus === 'Delivered' && order.orderItems) {
+        setProducts(currProds => {
+          const prods = [...currProds];
+          order.orderItems!.forEach(it => {
+            const idx = prods.findIndex(p => p.id === it.productId);
+            if (idx >= 0) {
+              const p = prods[idx];
+              const newQty = p.quantity + it.quantity;
+              prods[idx] = { ...p, quantity: newQty, status: getStatus(newQty, p.minStock) };
+              // Fire side-effects outside of state updater
+              setTimeout(() => {
+                addMovement({ productId: p.id, productName: p.name, action: 'Purchased', quantityChange: it.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
+                addNotification(`${p.name} stock increased by ${it.quantity} via purchase order ${id}`, 'success');
+              }, 0);
+            }
+          });
+          return prods;
+        });
+      }
+      return prev.map(o => o.id === id ? { ...o, status: newStatus } : o);
+    });
+  }, [addMovement, addNotification, currentUser.name, getStatus]);
 
   const addSupplierBill = useCallback((supplierId: number, supplierName: string, items: Omit<SupplierBillItem, 'total'>[]) => {
     const billItems: SupplierBillItem[] = items.map(it => ({ ...it, total: it.quantity * it.price }));
@@ -274,7 +361,15 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     });
     // Update supplier orders count
     setSuppliers(prev => prev.map(s => s.id === supplierId ? { ...s, totalOrders: s.totalOrders + 1 } : s));
-  }, [supplierBills.length, currentUser.name, addMovement, getStatus]);
+    addNotification(`Supplier bill ${billId} created — ₹${grandTotal.toLocaleString()} from ${supplierName}`, 'success');
+    // Check for newly sufficient stock
+    billItems.forEach(it => {
+      const product = products.find(p => p.id === it.productId);
+      if (product && product.quantity <= product.minStock && (product.quantity + it.quantity) > product.minStock) {
+        addNotification(`${it.productName} stock replenished to ${product.quantity + it.quantity} units`, 'info');
+      }
+    });
+  }, [supplierBills.length, currentUser.name, addMovement, addNotification, getStatus, products]);
 
   const addCustomerBill = useCallback((customerName: string, items: Omit<CustomerBillItem, 'total'>[]): { success: boolean; error?: string } => {
     // Validate stock
@@ -302,8 +397,19 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     billItems.forEach(it => {
       addMovement({ productId: it.productId, productName: it.productName, action: 'Exported', quantityChange: -it.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
     });
+    addNotification(`Customer bill ${billId} created — ₹${grandTotal.toLocaleString()} for ${customerName}`, 'success');
+    // Check for low stock after sale
+    billItems.forEach(it => {
+      const product = products.find(p => p.id === it.productId);
+      if (product) {
+        const newQty = product.quantity - it.quantity;
+        if (newQty > 0 && newQty <= product.minStock) {
+          addNotification(`Low stock alert: ${it.productName} only ${newQty} units remaining`, 'warning');
+        }
+      }
+    });
     return { success: true };
-  }, [customerBills.length, products, currentUser.name, addMovement, getStatus]);
+  }, [customerBills.length, products, currentUser.name, addMovement, addNotification, getStatus]);
 
   // Derived data
   const lowStockProducts = products.filter(p => p.quantity > 0 && p.quantity <= p.minStock);
@@ -328,9 +434,10 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   return (
     <InventoryContext.Provider value={{
-      products, suppliers, users, movements, orders, supplierBills, customerBills, currentUser,
+      products, suppliers, users, movements, orders, supplierBills, customerBills, notifications, unreadCount, currentUser,
       setProducts, setSuppliers, setUsers, setOrders,
-      addMovement, addProducts, getStatus, addSupplierBill, addCustomerBill,
+      addMovement, addProducts, getStatus, updateOrderStatus, addSupplierBill, addCustomerBill,
+      addNotification, markNotificationRead, markAllNotificationsRead,
       lowStockProducts, expiringProducts, stockForecasts, reorderSuggestions,
     }}>
       {children}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useInventory } from '../context/InventoryContext';
 import {
   Package, AlertTriangle, Truck, ShoppingCart, TrendingUp, TrendingDown,
@@ -16,6 +17,7 @@ const actionIcons: Record<string, React.ReactNode> = {
 };
 
 const DashboardPage: React.FC = () => {
+  const navigate = useNavigate();
   const { products, suppliers, orders, movements, lowStockProducts, expiringProducts, stockForecasts, reorderSuggestions, setOrders } = useInventory();
   const totalProducts = products.reduce((s, p) => s + p.quantity, 0);
   const totalValue = products.reduce((s, p) => s + p.quantity * p.price, 0);
@@ -29,15 +31,7 @@ const DashboardPage: React.FC = () => {
   ];
 
   const handleAutoReorder = (r: typeof reorderSuggestions[0]) => {
-    const newOrder = {
-      id: `PO-2024-${String(orders.length + 848).padStart(4, '0')}`,
-      supplier: r.supplier,
-      items: 1,
-      total: `₹${(r.suggestedQty * r.product.price).toLocaleString()}`,
-      date: new Date().toISOString().split('T')[0],
-      status: 'Pending' as const,
-    };
-    setOrders(prev => [newOrder, ...prev]);
+    navigate('/purchase-orders', { state: { createOrder: true, prefill: r } });
   };
 
   return (
