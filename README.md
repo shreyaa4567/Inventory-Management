@@ -128,10 +128,11 @@ The system simulates a robust relational database structure:
    ```
 
 4. **Run the development server**
-   ```bash
-   npm run dev
-   ```
-   *The app will be available at `http://localhost:5173`.*
+   
+  
+You can access the live deployed application here:
+
+🔗 https://inventory-management-two-beige.vercel.app/
 
 ---
 
