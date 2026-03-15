@@ -5,7 +5,7 @@ import { MapPin, Package, X } from 'lucide-react';
 // Warehouse layout: 3 sections × 3 racks × 3 shelves (A, B, C | 01-03 | A-C)
 const sections = ['A', 'B', 'C'];
 const racks = ['01', '02', '03'];
-const shelves = ['A', 'B', 'C'];
+
 
 const WarehouseMapPage: React.FC = () => {
   const { products } = useInventory();

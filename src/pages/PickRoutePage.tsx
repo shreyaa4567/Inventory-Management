@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import { Navigation, MapPin, Package, ChevronRight } from 'lucide-react';
+import { Navigation, MapPin, ChevronRight } from 'lucide-react';
 
 const sections = ['A', 'B', 'C'];
 const racks = ['01', '02', '03'];

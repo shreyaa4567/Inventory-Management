@@ -1,6 +1,6 @@
 import React from 'react';
 import { useInventory } from '../context/InventoryContext';
-import { TrendingUp, TrendingDown, AlertTriangle, Package, DollarSign, BarChart3, Layers } from 'lucide-react';
+import { AlertTriangle, Package, DollarSign, BarChart3 } from 'lucide-react';
 
 const ReportsPage: React.FC = () => {
   const { products, lowStockProducts } = useInventory();

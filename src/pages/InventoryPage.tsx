@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import { Plus, Edit2, Trash2, Search, Upload, X, MapPin, Calendar, Barcode } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Upload, MapPin, Calendar, Barcode } from 'lucide-react';
 
 const categories = ['All', 'Groceries', 'Electronics', 'Stationery', 'Household Items', 'Clothing'];
 const stockFilters = ['All', 'In Stock', 'Low Stock', 'Out of Stock'];

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import { Search, Plus, Edit2, Trash2, Star, TrendingUp, Truck, CheckCircle } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Star, Truck, CheckCircle } from 'lucide-react';
 
 const SuppliersPage: React.FC = () => {
   const { suppliers, setSuppliers } = useInventory();
