@@ -11,7 +11,7 @@ const statusBadge: Record<string, string> = {
 };
 
 const PurchaseOrderPage: React.FC = () => {
-  const { products, suppliers, orders, setOrders, addNotification, updateOrderStatus } = useInventory();
+  const { products, suppliers, orders, createPurchaseOrder, addNotification, updateOrderStatus } = useInventory();
   const location = useLocation();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
@@ -62,7 +62,7 @@ const PurchaseOrderPage: React.FC = () => {
       }]
     };
 
-    setOrders(prev => [newOrder, ...prev]);
+    createPurchaseOrder(newOrder);
     addNotification(`Purchase order ${newOrder.id} generated for ${product.name}`, 'info');
     setShowForm(false);
     setFormData({ supplierId: '', productId: '', quantity: '' });

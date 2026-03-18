@@ -161,6 +161,7 @@ interface InventoryContextType {
   deleteSupplier: (id: number) => Promise<void>;
   getStatus: (qty: number, minStock: number) => Product['status'];
   updateOrderStatus: (id: string, newStatus: PurchaseOrder['status']) => Promise<void>;
+  createPurchaseOrder: (order: PurchaseOrder) => Promise<void>;
   addSupplierBill: (supplierId: number, supplierName: string, items: Omit<SupplierBillItem, 'total'>[]) => Promise<void>;
   addCustomerBill: (customerName: string, items: Omit<CustomerBillItem, 'total'>[]) => Promise<{ success: boolean; error?: string }>;
   addNotification: (message: string, type: NotificationType) => void;
@@ -493,6 +494,43 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, [addNotification]);
 
+  const createPurchaseOrder = useCallback(async (order: PurchaseOrder) => {
+    // 1. Insert into purchase_orders table
+    const { error: poError } = await supabase.from('purchase_orders').insert([{
+      id: order.id,
+      supplier_name: order.supplier,
+      items: order.items,
+      total: order.total,
+      date: order.date,
+      status: order.status
+    }]);
+
+    if (poError) {
+      console.error('Error creating purchase order:', poError);
+      return;
+    }
+
+    // 2. Insert each item into purchase_order_items table
+    if (order.orderItems && order.orderItems.length > 0) {
+      const itemsPayload = order.orderItems.map(it => ({
+        purchase_order_id: order.id,
+        product_id: it.productId,
+        product_name: it.productName,
+        quantity: it.quantity,
+        price: it.price,
+        total: it.total
+      }));
+
+      const { error: itemsError } = await supabase.from('purchase_order_items').insert(itemsPayload);
+      if (itemsError) {
+        console.error('Error creating purchase order items:', itemsError);
+      }
+    }
+
+    // 3. Update local state
+    setOrders(prev => [order, ...prev]);
+  }, []);
+
   const updateOrderStatus = useCallback(async (id: string, newStatus: PurchaseOrder['status']) => {
     const { error } = await supabase.from('purchase_orders').update({ status: newStatus }).eq('id', id);
     if (error) {
@@ -673,7 +711,7 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     <InventoryContext.Provider value={{
       products, suppliers, users, movements, orders, supplierBills, customerBills, notifications, unreadCount, currentUser, isLoading,
       setProducts, setSuppliers, setUsers, setOrders,
-      addMovement, addProducts, updateProduct, deleteProduct, addSupplier, updateSupplier, deleteSupplier, getStatus, updateOrderStatus, addSupplierBill, addCustomerBill,
+      addMovement, addProducts, updateProduct, deleteProduct, addSupplier, updateSupplier, deleteSupplier, getStatus, updateOrderStatus, createPurchaseOrder, addSupplierBill, addCustomerBill,
       addNotification, markNotificationRead, markAllNotificationsRead,
       lowStockProducts, expiringProducts, stockForecasts, reorderSuggestions,
     }}>
