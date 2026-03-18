@@ -36,9 +36,9 @@ const CustomerBillsPage: React.FC = () => {
 
   const grandTotal = lineItems.reduce((s, it) => s + it.quantity * it.price, 0);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!customerName.trim() || lineItems.some(it => !it.productId || it.quantity <= 0)) return;
-    const result = addCustomerBill(
+    const result = await addCustomerBill(
       customerName.trim(),
       lineItems.map(it => ({ productId: it.productId, productName: it.productName, quantity: it.quantity, price: it.price }))
     );
