@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useInventory, rolePermissions, type UserRole, type AppUser } from '../context/InventoryContext';
+import { supabase } from '../lib/supabase';
 import { Search, Plus, Edit2, Trash2, Shield, ShieldCheck, ShieldAlert, UserCog } from 'lucide-react';
 
 const roleIcons: Record<UserRole, React.ReactNode> = {
@@ -33,16 +34,29 @@ const UserPage: React.FC = () => {
     setShowModal(true);
   };
 
-  const save = () => {
+  const save = async () => {
     if (editing) {
-      setUsers(users.map(u => u.id === editing.id ? { ...u, ...form } : u));
+      const payload: any = { name: form.name, email: form.email, role: form.role, department: form.department, status: form.status };
+      const { error } = await supabase.from('app_users').update(payload).eq('id', editing.id);
+      if (!error) {
+        setUsers(users.map(u => u.id === editing.id ? { ...u, ...form } : u));
+      }
     } else {
-      setUsers([...users, { id: Date.now(), ...form, lastActive: 'Just now' }]);
+      const payload = { name: form.name, email: form.email, role: form.role, department: form.department, status: form.status, last_active: 'Just now' };
+      const { data, error } = await supabase.from('app_users').insert([payload]).select();
+      if (!error && data) {
+        setUsers([...users, { id: data[0].id, ...form, lastActive: 'Just now' }]);
+      }
     }
     setShowModal(false);
   };
 
-  const remove = (id: number) => setUsers(users.filter(u => u.id !== id));
+  const remove = async (id: number) => {
+    const { error } = await supabase.from('app_users').delete().eq('id', id);
+    if (!error) {
+      setUsers(users.filter(u => u.id !== id));
+    }
+  };
 
   return (
     <div>

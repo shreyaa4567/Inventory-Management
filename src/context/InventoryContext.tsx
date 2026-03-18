@@ -607,7 +607,7 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     setSupplierBills(prev => [newBill, ...prev]);
 
     // 4. Update Product Stock
-    billItems.forEach(async it => {
+    for (const it of billItems) {
       const product = products.find(p => p.id === it.productId);
       if (product) {
         const newQty = product.quantity + it.quantity;
@@ -615,13 +615,13 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
         await supabase.from('products').update({ quantity: newQty, status: newStockStatus }).eq('id', product.id);
         setProducts(prev => prev.map(p => p.id === product.id ? { ...p, quantity: newQty, status: newStockStatus } : p));
         
-        addMovement({ productId: it.productId, productName: it.productName, action: 'Imported', quantityChange: it.quantity, date, user: createdBy });
+        await addMovement({ productId: it.productId, productName: it.productName, action: 'Imported', quantityChange: it.quantity, date, user: createdBy });
         
         if (product.quantity <= product.minStock && newQty > product.minStock) {
-           addNotification(`${it.productName} stock replenished to ${newQty} units`, 'info');
+           addNotification(`${it.productName} stock replenished to ${newQty} units — back In Stock`, 'success');
         }
       }
-    });
+    }
 
     const targetSupplier = suppliers.find(s => s.id === supplierId);
     if (targetSupplier) {
@@ -657,7 +657,7 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     const newBill: CustomerBill = { id: billId, customerName, items: billItems, grandTotal, date, createdBy };
     setCustomerBills(prev => [newBill, ...prev]);
 
-    billItems.forEach(async it => {
+    for (const it of billItems) {
       const product = products.find(p => p.id === it.productId);
       if (product) {
         const newQty = product.quantity - it.quantity;
@@ -665,19 +665,21 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
         await supabase.from('products').update({ quantity: newQty, status: newStockStatus }).eq('id', product.id);
         setProducts(prev => prev.map(p => p.id === product.id ? { ...p, quantity: newQty, status: newStockStatus } : p));
         
-        addMovement({ productId: it.productId, productName: it.productName, action: 'Exported', quantityChange: -it.quantity, date, user: createdBy });
+        await addMovement({ productId: it.productId, productName: it.productName, action: 'Exported', quantityChange: -it.quantity, date, user: createdBy });
         
-        if (newQty > 0 && newQty <= product.minStock) {
+        if (newQty === 0) {
+          addNotification(`Out of stock: ${it.productName} has 0 units remaining`, 'warning');
+        } else if (newQty > 0 && newQty <= product.minStock) {
           addNotification(`Low stock alert: ${it.productName} only ${newQty} units remaining`, 'warning');
         }
       }
-    });
+    }
 
     addNotification(`Customer bill ${billId} created — ₹${grandTotal.toLocaleString()} for ${customerName}`, 'success');
     return { success: true };
   }, [currentUser, products, addMovement, addNotification]);
 
-  const lowStockProducts = products.filter(p => p.quantity > 0 && p.quantity <= p.minStock);
+  const lowStockProducts = products.filter(p => p.quantity <= p.minStock);
   const today = new Date();
   
   const expiringProducts = products.filter(p => {
@@ -692,11 +694,13 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     .sort((a, b) => a.daysRemaining - b.daysRemaining)
     .slice(0, 8);
 
-  const reorderSuggestions = lowStockProducts.map(p => ({
-    product: p,
-    suggestedQty: Math.max(p.minStock * 3 - p.quantity, 20),
-    supplier: p.supplier,
-  }));
+  const reorderSuggestions = products
+    .filter(p => p.quantity < p.minStock)
+    .map(p => ({
+      product: p,
+      suggestedQty: Math.max(p.minStock * 3 - p.quantity, 20),
+      supplier: p.supplier,
+    }));
 
   if (isLoading) {
     return (
