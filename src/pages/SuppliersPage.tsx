@@ -3,7 +3,7 @@ import { useInventory } from '../context/InventoryContext';
 import { Search, Plus, Edit2, Trash2, Star, Truck, CheckCircle } from 'lucide-react';
 
 const SuppliersPage: React.FC = () => {
-  const { suppliers, setSuppliers } = useInventory();
+  const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useInventory();
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<typeof suppliers[0] | null>(null);
@@ -30,16 +30,16 @@ const SuppliersPage: React.FC = () => {
     setShowModal(true);
   };
 
-  const save = () => {
+  const save = async () => {
     if (editing) {
-      setSuppliers(suppliers.map(s => s.id === editing.id ? { ...s, ...form } : s));
+      await updateSupplier(editing.id, { ...form });
     } else {
-      setSuppliers([...suppliers, { id: Date.now(), ...form }]);
+      await addSupplier({ ...form });
     }
     setShowModal(false);
   };
 
-  const remove = (id: number) => setSuppliers(suppliers.filter(s => s.id !== id));
+  const remove = async (id: number) => await deleteSupplier(id);
 
   const renderStars = (rating: number) => (
     <span style={{ display: 'inline-flex', gap: 2 }}>
@@ -105,9 +105,14 @@ const SuppliersPage: React.FC = () => {
                 <td style={{ color: '#2563eb' }}>{s.email}</td>
                 <td style={{ fontWeight: 600 }}>{s.totalOrders}</td>
                 <td>
-                  <span className={`badge ${(s.onTimeDeliveries / s.totalOrders) >= 0.95 ? 'badge-success' : (s.onTimeDeliveries / s.totalOrders) >= 0.85 ? 'badge-warning' : 'badge-danger'}`}>
-                    {((s.onTimeDeliveries / s.totalOrders) * 100).toFixed(0)}%
-                  </span>
+                  {(() => {
+                    const pct = s.onTimeDeliveryPercent ?? (s.totalOrders > 0 ? ((s.onTimeDeliveries / s.totalOrders) * 100) : 0);
+                    return (
+                      <span className={`badge ${pct >= 95 ? 'badge-success' : pct >= 85 ? 'badge-warning' : 'badge-danger'}`}>
+                        {pct.toFixed(0)}%
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td>{renderStars(s.rating)}</td>
                 <td>

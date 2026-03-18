@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, type ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
+import { Loader2 } from 'lucide-react';
 
 // ========== Types ==========
 
@@ -13,13 +15,13 @@ export interface Product {
   price: number;
   supplier: string;
   status: 'In Stock' | 'Low Stock' | 'Out of Stock';
-  location: string;       // e.g. "A-03-B"
-  expiryDate: string;     // ISO date
-  mfgDate: string;        // ISO date
-  barcode: string;        // unique code
-  minStock: number;       // minimum stock level
-  imageUrl: string;       // product image
-  avgDailySales: number;  // for demand prediction
+  location: string;
+  expiryDate: string;
+  mfgDate: string;
+  barcode: string;
+  minStock: number;
+  imageUrl: string;
+  avgDailySales: number;
 }
 
 export interface Supplier {
@@ -31,7 +33,10 @@ export interface Supplier {
   address: string;
   totalOrders: number;
   onTimeDeliveries: number;
-  rating: number; // 1-5
+  totalDelivered?: number;
+  onTimeCount?: number;
+  onTimeDeliveryPercent?: number;
+  rating: number;
 }
 
 export interface AppUser {
@@ -129,82 +134,6 @@ export const hasPermission = (role: UserRole, permission: string): boolean => {
   return rolePermissions[role].includes(permission) || rolePermissions[role].includes('full_access');
 };
 
-// ========== Initial Data ==========
-
-const today = new Date();
-const d = (offset: number) => {
-  const dt = new Date(today);
-  dt.setDate(dt.getDate() + offset);
-  return dt.toISOString().split('T')[0];
-};
-
-const initialProducts: Product[] = [
-  { id: 1, name: 'Basmati Rice 5kg', category: 'Groceries', quantity: 150, price: 320, supplier: 'Sharma Traders', status: 'In Stock', location: 'A-01-A', expiryDate: d(90), mfgDate: d(-60), barcode: 'GRC-001-2024', minStock: 30, imageUrl: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=80&h=80&fit=crop', avgDailySales: 5 },
-  { id: 2, name: 'Toor Dal 1kg', category: 'Groceries', quantity: 8, price: 140, supplier: 'Patel Wholesale', status: 'Low Stock', location: 'A-01-B', expiryDate: d(5), mfgDate: d(-120), barcode: 'GRC-002-2024', minStock: 20, imageUrl: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?w=80&h=80&fit=crop', avgDailySales: 3 },
-  { id: 3, name: 'Sunflower Oil 1L', category: 'Groceries', quantity: 200, price: 180, supplier: 'Singh Supplies', status: 'In Stock', location: 'A-02-A', expiryDate: d(180), mfgDate: d(-30), barcode: 'GRC-003-2024', minStock: 25, imageUrl: 'https://images.unsplash.com/photo-1474979266404-7f28db3f3c9b?w=80&h=80&fit=crop', avgDailySales: 4 },
-  { id: 4, name: 'Wheat Flour 10kg', category: 'Groceries', quantity: 0, price: 450, supplier: 'Sharma Traders', status: 'Out of Stock', location: 'A-02-B', expiryDate: d(60), mfgDate: d(-90), barcode: 'GRC-004-2024', minStock: 15, imageUrl: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=80&h=80&fit=crop', avgDailySales: 3 },
-  { id: 5, name: 'Sugar 5kg', category: 'Groceries', quantity: 95, price: 225, supplier: 'Patel Wholesale', status: 'In Stock', location: 'A-03-A', expiryDate: d(365), mfgDate: d(-10), barcode: 'GRC-005-2024', minStock: 20, imageUrl: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=80&h=80&fit=crop', avgDailySales: 2 },
-  { id: 6, name: 'Wireless Keyboard MK-200', category: 'Electronics', quantity: 45, price: 1299, supplier: 'Gupta Electronics', status: 'In Stock', location: 'B-01-A', expiryDate: '', mfgDate: d(-180), barcode: 'ELC-001-2024', minStock: 10, imageUrl: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=80&h=80&fit=crop', avgDailySales: 1 },
-  { id: 7, name: 'USB-C Hub 7-in-1', category: 'Electronics', quantity: 5, price: 2499, supplier: 'Gupta Electronics', status: 'Low Stock', location: 'B-01-B', expiryDate: '', mfgDate: d(-90), barcode: 'ELC-002-2024', minStock: 15, imageUrl: 'https://images.unsplash.com/photo-1625723044792-44de16100294?w=80&h=80&fit=crop', avgDailySales: 2 },
-  { id: 8, name: 'LED Monitor 24"', category: 'Electronics', quantity: 28, price: 12999, supplier: 'Reddy Distributors', status: 'In Stock', location: 'B-02-A', expiryDate: '', mfgDate: d(-365), barcode: 'ELC-003-2024', minStock: 5, imageUrl: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=80&h=80&fit=crop', avgDailySales: 0.5 },
-  { id: 9, name: 'Bluetooth Speaker', category: 'Electronics', quantity: 0, price: 1899, supplier: 'Gupta Electronics', status: 'Out of Stock', location: 'B-02-B', expiryDate: '', mfgDate: d(-200), barcode: 'ELC-004-2024', minStock: 8, imageUrl: 'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=80&h=80&fit=crop', avgDailySales: 1 },
-  { id: 10, name: 'Webcam HD 1080p', category: 'Electronics', quantity: 62, price: 2199, supplier: 'Reddy Distributors', status: 'In Stock', location: 'B-03-A', expiryDate: '', mfgDate: d(-150), barcode: 'ELC-005-2024', minStock: 10, imageUrl: 'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=80&h=80&fit=crop', avgDailySales: 1 },
-  { id: 11, name: 'A4 Paper Bundle (500)', category: 'Stationery', quantity: 3, price: 350, supplier: 'Jain Enterprises', status: 'Low Stock', location: 'C-01-A', expiryDate: '', mfgDate: d(-30), barcode: 'STN-001-2024', minStock: 25, imageUrl: 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=80&h=80&fit=crop', avgDailySales: 4 },
-  { id: 12, name: 'Ball Pen (Pack of 10)', category: 'Stationery', quantity: 120, price: 80, supplier: 'Jain Enterprises', status: 'In Stock', location: 'C-01-B', expiryDate: '', mfgDate: d(-60), barcode: 'STN-002-2024', minStock: 20, imageUrl: 'https://images.unsplash.com/photo-1585336261022-680e295ce3fe?w=80&h=80&fit=crop', avgDailySales: 3 },
-  { id: 13, name: 'Spiral Notebook A5', category: 'Stationery', quantity: 200, price: 60, supplier: 'Verma Industries', status: 'In Stock', location: 'C-02-A', expiryDate: '', mfgDate: d(-45), barcode: 'STN-003-2024', minStock: 30, imageUrl: 'https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=80&h=80&fit=crop', avgDailySales: 5 },
-  { id: 14, name: 'Sticky Notes (100 sheets)', category: 'Stationery', quantity: 75, price: 45, supplier: 'Jain Enterprises', status: 'In Stock', location: 'C-02-B', expiryDate: '', mfgDate: d(-20), barcode: 'STN-004-2024', minStock: 15, imageUrl: 'https://images.unsplash.com/photo-1572726729207-a78d6feb18d7?w=80&h=80&fit=crop', avgDailySales: 2 },
-  { id: 15, name: 'Floor Cleaner 1L', category: 'Household Items', quantity: 90, price: 199, supplier: 'Nair Trading Co.', status: 'In Stock', location: 'A-03-B', expiryDate: d(365), mfgDate: d(-60), barcode: 'HHD-001-2024', minStock: 15, imageUrl: 'https://images.unsplash.com/photo-1585421514284-efb74c2b69ba?w=80&h=80&fit=crop', avgDailySales: 1 },
-  { id: 16, name: 'Dish Soap 500ml', category: 'Household Items', quantity: 7, price: 89, supplier: 'Singh Supplies', status: 'Low Stock', location: 'B-03-B', expiryDate: d(3), mfgDate: d(-180), barcode: 'HHD-002-2024', minStock: 20, imageUrl: 'https://images.unsplash.com/photo-1622398925373-3f91b1e275f4?w=80&h=80&fit=crop', avgDailySales: 2 },
-  { id: 17, name: 'Broom Set', category: 'Household Items', quantity: 35, price: 299, supplier: 'Nair Trading Co.', status: 'In Stock', location: 'C-03-A', expiryDate: '', mfgDate: d(-90), barcode: 'HHD-003-2024', minStock: 10, imageUrl: 'https://images.unsplash.com/photo-1563453392212-326f5e854473?w=80&h=80&fit=crop', avgDailySales: 0.5 },
-  { id: 18, name: 'Glass Cleaner 500ml', category: 'Household Items', quantity: 55, price: 145, supplier: 'Nair Trading Co.', status: 'In Stock', location: 'C-03-B', expiryDate: d(240), mfgDate: d(-30), barcode: 'HHD-004-2024', minStock: 10, imageUrl: 'https://images.unsplash.com/photo-1585421514284-efb74c2b69ba?w=80&h=80&fit=crop', avgDailySales: 1 },
-  { id: 19, name: 'Cotton T-Shirt (M)', category: 'Clothing', quantity: 60, price: 499, supplier: 'Verma Industries', status: 'In Stock', location: 'A-02-C', expiryDate: '', mfgDate: d(-30), barcode: 'CLT-001-2024', minStock: 10, imageUrl: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=80&h=80&fit=crop', avgDailySales: 2 },
-  { id: 20, name: 'Denim Jeans (32)', category: 'Clothing', quantity: 0, price: 1299, supplier: 'Verma Industries', status: 'Out of Stock', location: 'A-03-C', expiryDate: '', mfgDate: d(-60), barcode: 'CLT-002-2024', minStock: 10, imageUrl: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=80&h=80&fit=crop', avgDailySales: 1 },
-  { id: 21, name: 'Formal Shirt (L)', category: 'Clothing', quantity: 40, price: 899, supplier: 'Verma Industries', status: 'In Stock', location: 'B-01-C', expiryDate: '', mfgDate: d(-45), barcode: 'CLT-003-2024', minStock: 8, imageUrl: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=80&h=80&fit=crop', avgDailySales: 1 },
-  { id: 22, name: 'Sports Shoes (9)', category: 'Clothing', quantity: 4, price: 2499, supplier: 'Reddy Distributors', status: 'Low Stock', location: 'B-02-C', expiryDate: '', mfgDate: d(-120), barcode: 'CLT-004-2024', minStock: 10, imageUrl: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=80&h=80&fit=crop', avgDailySales: 1 },
-];
-
-const initialSuppliers: Supplier[] = [
-  { id: 1, name: 'Sharma Traders', contactPerson: 'Rajesh Sharma', phone: '+91 9876543210', email: 'rajesh@sharmatraders.in', address: 'Delhi', totalOrders: 145, onTimeDeliveries: 138, rating: 4.5 },
-  { id: 2, name: 'Gupta Electronics', contactPerson: 'Amit Gupta', phone: '+91 9123456780', email: 'amit@guptaelectronics.in', address: 'Mumbai', totalOrders: 98, onTimeDeliveries: 89, rating: 4.2 },
-  { id: 3, name: 'Patel Wholesale', contactPerson: 'Mehul Patel', phone: '+91 9812345678', email: 'mehul@patelwholesale.in', address: 'Ahmedabad', totalOrders: 210, onTimeDeliveries: 195, rating: 4.0 },
-  { id: 4, name: 'Singh Supplies', contactPerson: 'Harpreet Singh', phone: '+91 9988776655', email: 'harpreet@singhsupplies.in', address: 'Chandigarh', totalOrders: 67, onTimeDeliveries: 62, rating: 4.3 },
-  { id: 5, name: 'Verma Industries', contactPerson: 'Sanjay Verma', phone: '+91 9876123456', email: 'sanjay@vermaindustries.in', address: 'Pune', totalOrders: 120, onTimeDeliveries: 108, rating: 3.8 },
-  { id: 6, name: 'Reddy Distributors', contactPerson: 'Krishna Reddy', phone: '+91 9654321098', email: 'krishna@reddydist.in', address: 'Hyderabad', totalOrders: 85, onTimeDeliveries: 80, rating: 4.6 },
-  { id: 7, name: 'Jain Enterprises', contactPerson: 'Pooja Jain', phone: '+91 9543216789', email: 'pooja@jainenterprises.in', address: 'Jaipur', totalOrders: 156, onTimeDeliveries: 148, rating: 4.4 },
-  { id: 8, name: 'Nair Trading Co.', contactPerson: 'Anil Nair', phone: '+91 9432167890', email: 'anil@nairtrading.in', address: 'Kochi', totalOrders: 73, onTimeDeliveries: 70, rating: 4.7 },
-];
-
-const initialUsers: AppUser[] = [
-  { id: 1, name: 'Meena Kumar', email: 'meena.kumar@ims.com', role: 'Admin', department: 'Management', lastActive: '2 min ago', status: 'Active' },
-  { id: 2, name: 'Priya Singh', email: 'priya.singh@ims.com', role: 'Manager', department: 'Procurement', lastActive: '1 hour ago', status: 'Active' },
-  { id: 3, name: 'Amit Gupta', email: 'amit.gupta@ims.com', role: 'Staff', department: 'Warehouse', lastActive: '3 hours ago', status: 'Active' },
-  { id: 4, name: 'Mehul Patel', email: 'mehul.patel@ims.com', role: 'Staff', department: 'Inventory', lastActive: '1 day ago', status: 'Active' },
-  { id: 5, name: 'Sneha Reddy', email: 'sneha.reddy@ims.com', role: 'Manager', department: 'Sales', lastActive: '2 days ago', status: 'Inactive' },
-  { id: 6, name: 'Vikram Nair', email: 'vikram.nair@ims.com', role: 'Staff', department: 'Logistics', lastActive: '5 hours ago', status: 'Active' },
-];
-
-const initialMovements: MovementRecord[] = [
-  { id: 1, productId: 1, productName: 'Basmati Rice 5kg', action: 'Added', quantityChange: 100, date: d(-1), user: 'John Doe' },
-  { id: 2, productId: 8, productName: 'LED Monitor 24"', action: 'Sold', quantityChange: -2, date: d(-1), user: 'Priya Singh' },
-  { id: 3, productId: 11, productName: 'A4 Paper Bundle (500)', action: 'Updated', quantityChange: -22, date: d(-2), user: 'Amit Gupta' },
-  { id: 4, productId: 6, productName: 'Wireless Keyboard MK-200', action: 'Purchased', quantityChange: 20, date: d(-2), user: 'Mehul Patel' },
-  { id: 5, productId: 9, productName: 'Bluetooth Speaker', action: 'Removed', quantityChange: -15, date: d(-3), user: 'John Doe' },
-  { id: 6, productId: 19, productName: 'Cotton T-Shirt (M)', action: 'Sold', quantityChange: -5, date: d(-3), user: 'Priya Singh' },
-  { id: 7, productId: 3, productName: 'Sunflower Oil 1L', action: 'Added', quantityChange: 50, date: d(-4), user: 'Amit Gupta' },
-  { id: 8, productId: 15, productName: 'Floor Cleaner 1L', action: 'Purchased', quantityChange: 30, date: d(-5), user: 'Mehul Patel' },
-];
-
-const initialOrders: PurchaseOrder[] = [
-  { id: 'PO-2024-0847', supplier: 'Sharma Traders', items: 15, total: '₹48,500', date: '2024-03-12', status: 'Delivered' },
-  { id: 'PO-2024-0846', supplier: 'Gupta Electronics', items: 8, total: '₹1,25,000', date: '2024-03-11', status: 'In Transit' },
-  { id: 'PO-2024-0845', supplier: 'Patel Wholesale', items: 22, total: '₹32,800', date: '2024-03-10', status: 'Pending' },
-  { id: 'PO-2024-0844', supplier: 'Singh Supplies', items: 10, total: '₹18,200', date: '2024-03-09', status: 'Delivered' },
-  { id: 'PO-2024-0843', supplier: 'Verma Industries', items: 5, total: '₹67,500', date: '2024-03-08', status: 'Cancelled' },
-  { id: 'PO-2024-0842', supplier: 'Reddy Distributors', items: 12, total: '₹89,000', date: '2024-03-07', status: 'Delivered' },
-  { id: 'PO-2024-0841', supplier: 'Jain Enterprises', items: 30, total: '₹15,600', date: '2024-03-06', status: 'In Transit' },
-  { id: 'PO-2024-0840', supplier: 'Nair Trading Co.', items: 18, total: '₹42,300', date: '2024-03-05', status: 'Delivered' },
-];
-
 // ========== Context ==========
 
 interface InventoryContextType {
@@ -217,17 +146,23 @@ interface InventoryContextType {
   customerBills: CustomerBill[];
   notifications: AppNotification[];
   unreadCount: number;
-  currentUser: AppUser;
+  currentUser: AppUser | null;
+  isLoading: boolean;
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   setSuppliers: React.Dispatch<React.SetStateAction<Supplier[]>>;
   setUsers: React.Dispatch<React.SetStateAction<AppUser[]>>;
   setOrders: React.Dispatch<React.SetStateAction<PurchaseOrder[]>>;
-  addMovement: (m: Omit<MovementRecord, 'id'>) => void;
-  addProducts: (newProducts: Omit<Product, 'id' | 'status'>[]) => void;
+  addMovement: (m: Omit<MovementRecord, 'id'>) => Promise<void>;
+  addProducts: (newProducts: Omit<Product, 'id' | 'status'>[]) => Promise<void>;
+  updateProduct: (id: number, updates: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: number) => Promise<void>;
+  addSupplier: (supplier: Omit<Supplier, 'id'>) => Promise<void>;
+  updateSupplier: (id: number, updates: Partial<Supplier>) => Promise<void>;
+  deleteSupplier: (id: number) => Promise<void>;
   getStatus: (qty: number, minStock: number) => Product['status'];
-  updateOrderStatus: (id: string, newStatus: PurchaseOrder['status']) => void;
-  addSupplierBill: (supplierId: number, supplierName: string, items: Omit<SupplierBillItem, 'total'>[]) => void;
-  addCustomerBill: (customerName: string, items: Omit<CustomerBillItem, 'total'>[]) => { success: boolean; error?: string };
+  updateOrderStatus: (id: string, newStatus: PurchaseOrder['status']) => Promise<void>;
+  addSupplierBill: (supplierId: number, supplierName: string, items: Omit<SupplierBillItem, 'total'>[]) => Promise<void>;
+  addCustomerBill: (customerName: string, items: Omit<CustomerBillItem, 'total'>[]) => Promise<{ success: boolean; error?: string }>;
   addNotification: (message: string, type: NotificationType) => void;
   markNotificationRead: (id: number) => void;
   markAllNotificationsRead: () => void;
@@ -245,34 +180,189 @@ export const useInventory = () => {
   return ctx;
 };
 
+// Data mapping utilities
+const mapProduct = (p: any): Product => ({
+  id: p.id,
+  name: p.name,
+  category: p.category,
+  quantity: p.quantity,
+  price: Number(p.price),
+  supplier: p.supplier_name || 'Unknown Supplier',
+  status: p.status as any,
+  location: p.location || '',
+  expiryDate: p.expiry_date || '',
+  mfgDate: '', 
+  barcode: p.barcode || '',
+  minStock: p.min_stock || 10,
+  imageUrl: p.image_url || '',
+  avgDailySales: 1
+});
+
+const mapSupplier = (s: any): Supplier => ({
+  id: s.id,
+  name: s.name,
+  contactPerson: s.contact_person || '',
+  phone: s.phone || '',
+  email: s.email || '',
+  address: '',
+  totalOrders: s.total_orders || 0,
+  onTimeDeliveries: Math.round(((s.on_time_count || 0) / Math.max(s.total_delivered || 1, 1)) * (s.total_orders || 1)), // Retroactively fitting the UI mock formula 
+  totalDelivered: s.total_delivered || 0,
+  onTimeCount: s.on_time_count || 0,
+  onTimeDeliveryPercent: s.on_time_delivery || 0,
+  rating: Number(s.rating) || 0
+});
+
+const mapUser = (u: any): AppUser => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+  role: u.role as any,
+  department: u.department || '',
+  lastActive: u.last_active || '',
+  status: u.status as any
+});
+
+const mapMovement = (m: any): MovementRecord => ({
+  id: m.id,
+  productId: m.product_id,
+  productName: m.product_name,
+  action: m.action as any,
+  quantityChange: m.quantity_change,
+  date: m.date,
+  user: m.user_name || ''
+});
+
+const mapOrder = (o: any): PurchaseOrder => ({
+  id: o.id,
+  supplier: o.supplier_name,
+  items: o.items,
+  total: o.total,
+  date: o.date,
+  status: o.status as any,
+  orderItems: o.orderItems?.map((it: any) => ({
+    productId: it.product_id,
+    productName: it.product_name,
+    quantity: it.quantity,
+    price: Number(it.price),
+    total: Number(it.total)
+  }))
+});
+
+const mapSupplierBill = (b: any): SupplierBill => ({
+  id: b.id,
+  supplierId: b.supplier_id,
+  supplierName: b.supplier_name,
+  items: b.items?.map((it: any) => ({
+    productId: it.product_id,
+    productName: it.product_name,
+    quantity: it.quantity,
+    price: Number(it.price),
+    total: Number(it.total)
+  })) || [],
+  grandTotal: Number(b.total_amount),
+  date: b.date,
+  createdBy: b.created_by
+});
+
+const mapCustomerBill = (b: any): CustomerBill => ({
+  id: b.id,
+  customerName: b.customer_name,
+  items: b.items?.map((it: any) => ({
+    productId: it.product_id,
+    productName: it.product_name,
+    quantity: it.quantity,
+    price: Number(it.price),
+    total: Number(it.total)
+  })) || [],
+  grandTotal: Number(b.total_amount),
+  date: b.date,
+  createdBy: b.created_by
+});
+
+
 export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
-  const [users, setUsers] = useState<AppUser[]>(initialUsers);
-  const [movements, setMovements] = useState<MovementRecord[]>(initialMovements);
-  const [orders, setOrders] = useState<PurchaseOrder[]>(initialOrders);
+  const [isLoading, setIsLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [movements, setMovements] = useState<MovementRecord[]>([]);
+  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [supplierBills, setSupplierBills] = useState<SupplierBill[]>([]);
   const [customerBills, setCustomerBills] = useState<CustomerBill[]>([]);
-  const currentUser = users[0]; // Admin by default
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  
+  const currentUser = users.length > 0 ? users[0] : null;
 
-  // Build initial notifications from low stock + expiry alerts
-  const buildInitialNotifications = (): AppNotification[] => {
-    const notifs: AppNotification[] = [];
-    let nid = 1;
-    initialProducts.forEach(p => {
-      if (p.quantity > 0 && p.quantity <= p.minStock) {
-        notifs.push({ id: nid++, message: `Low stock alert: ${p.name} only ${p.quantity} units remaining`, type: 'warning', timestamp: new Date().toISOString(), read: false });
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [
+        { data: prods },
+        { data: supps },
+        { data: usrs },
+        { data: movs },
+        { data: ords },
+        { data: sBills },
+        { data: cBills }
+      ] = await Promise.all([
+        supabase.from('products').select('*').order('id', { ascending: false }),
+        supabase.from('suppliers').select('*').order('id', { ascending: true }),
+        supabase.from('app_users').select('*').order('id', { ascending: true }),
+        supabase.from('movement_records').select('*').order('id', { ascending: false }),
+        supabase.from('purchase_orders').select(`*, orderItems:purchase_order_items(*)`).order('date', { ascending: false }),
+        supabase.from('supplier_bills').select(`*, items:supplier_bill_items(*)`).order('date', { ascending: false }),
+        supabase.from('customer_bills').select(`*, items:customer_bill_items(*)`).order('date', { ascending: false })
+      ]);
+
+      if (supps) setSuppliers(supps.map(mapSupplier));
+      if (prods) setProducts(prods.map(mapProduct));
+      if (movs) setMovements(movs.map(mapMovement));
+      if (ords) setOrders(ords.map(mapOrder));
+      if (sBills) setSupplierBills(sBills.map(mapSupplierBill));
+      if (cBills) setCustomerBills(cBills.map(mapCustomerBill));
+
+      // Handle users and default creation
+      if (usrs && usrs.length > 0) {
+        setUsers(usrs.map(mapUser));
+      } else {
+        const defaultUser = {
+          name: 'Meena Kumar', email: 'meena.kumar@ims.com',
+          role: 'Admin', department: 'Management', last_active: 'Just now', status: 'Active'
+        };
+        const { data: newUser } = await supabase.from('app_users').insert([defaultUser]).select();
+        if (newUser) setUsers([mapUser(newUser[0])]);
       }
-      if (p.expiryDate) {
-        const diff = (new Date(p.expiryDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-        if (diff >= 0 && diff <= 7) {
-          notifs.push({ id: nid++, message: `Product ${p.name} expiring in ${Math.ceil(diff)} day(s)`, type: 'warning', timestamp: new Date().toISOString(), read: false });
+
+      // Initial Notifications based on loaded products
+      const loadedProducts = prods ? prods.map(mapProduct) : [];
+      const notifs: AppNotification[] = [];
+      let nid = 1;
+      const today = new Date();
+      loadedProducts.forEach(p => {
+        if (p.quantity > 0 && p.quantity <= p.minStock) {
+          notifs.push({ id: nid++, message: `Low stock alert: ${p.name} only ${p.quantity} units remaining`, type: 'warning', timestamp: new Date().toISOString(), read: false });
         }
-      }
-    });
-    return notifs;
+        if (p.expiryDate) {
+          const diff = (new Date(p.expiryDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+          if (diff >= 0 && diff <= 7) {
+            notifs.push({ id: nid++, message: `Product ${p.name} expiring in ${Math.ceil(diff)} day(s)`, type: 'warning', timestamp: new Date().toISOString(), read: false });
+          }
+        }
+      });
+      setNotifications(notifs);
+
+    } catch (error) {
+      console.error('Error fetching inventory data from Supabase:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
-  const [notifications, setNotifications] = useState<AppNotification[]>(buildInitialNotifications);
+
   const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
   const addNotification = useCallback((message: string, type: NotificationType) => {
@@ -293,127 +383,265 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     return 'In Stock';
   };
 
-  const addMovement = useCallback((m: Omit<MovementRecord, 'id'>) => {
-    setMovements(prev => [{ ...m, id: Date.now() }, ...prev]);
+  const addMovement = useCallback(async (m: Omit<MovementRecord, 'id'>) => {
+    const { data } = await supabase.from('movement_records').insert([{
+      product_id: m.productId,
+      product_name: m.productName,
+      action: m.action,
+      quantity_change: m.quantityChange,
+      date: m.date,
+      user_name: m.user
+    }]).select();
+    
+    if (data) setMovements(prev => [mapMovement(data[0]), ...prev]);
   }, []);
 
-  const addProducts = useCallback((newProducts: Omit<Product, 'id' | 'status'>[]) => {
-    const created = newProducts.map((p, i) => ({
-      ...p,
-      id: Date.now() + i,
-      status: getStatus(p.quantity, p.minStock),
-    } as Product));
-    setProducts(prev => [...prev, ...created]);
-    created.forEach(p => {
-      addMovement({ productId: p.id, productName: p.name, action: 'Added', quantityChange: p.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
-      addNotification(`New product added: ${p.name}`, 'success');
-    });
-  }, [addMovement, addNotification, currentUser.name]);
-
-  const updateOrderStatus = useCallback((id: string, newStatus: PurchaseOrder['status']) => {
-    setOrders(prev => {
-      const order = prev.find(o => o.id === id);
-      if (!order) return prev;
-      
-      // If transitioning to Delivered, sync inventory
-      if (order.status !== 'Delivered' && newStatus === 'Delivered' && order.orderItems) {
-        setProducts(currProds => {
-          const prods = [...currProds];
-          order.orderItems!.forEach(it => {
-            const idx = prods.findIndex(p => p.id === it.productId);
-            if (idx >= 0) {
-              const p = prods[idx];
-              const newQty = p.quantity + it.quantity;
-              prods[idx] = { ...p, quantity: newQty, status: getStatus(newQty, p.minStock) };
-              // Fire side-effects outside of state updater
-              setTimeout(() => {
-                addMovement({ productId: p.id, productName: p.name, action: 'Purchased', quantityChange: it.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
-                addNotification(`${p.name} stock increased by ${it.quantity} via purchase order ${id}`, 'success');
-              }, 0);
-            }
-          });
-          return prods;
-        });
-      }
-      return prev.map(o => o.id === id ? { ...o, status: newStatus } : o);
-    });
-  }, [addMovement, addNotification, currentUser.name, getStatus]);
-
-  const addSupplierBill = useCallback((supplierId: number, supplierName: string, items: Omit<SupplierBillItem, 'total'>[]) => {
-    const billItems: SupplierBillItem[] = items.map(it => ({ ...it, total: it.quantity * it.price }));
-    const grandTotal = billItems.reduce((s, it) => s + it.total, 0);
-    const billId = `SUP-${String(supplierBills.length + 1).padStart(3, '0')}`;
-    const bill: SupplierBill = {
-      id: billId, supplierId, supplierName, items: billItems, grandTotal,
-      date: new Date().toISOString().split('T')[0], createdBy: currentUser.name,
-    };
-    setSupplierBills(prev => [bill, ...prev]);
-    // Increase product quantities
-    setProducts(prev => prev.map(p => {
-      const item = billItems.find(it => it.productId === p.id);
-      if (!item) return p;
-      const newQty = p.quantity + item.quantity;
-      return { ...p, quantity: newQty, status: getStatus(newQty, p.minStock) };
+  const addProducts = useCallback(async (newProducts: Omit<Product, 'id' | 'status'>[]) => {
+    const payloads = newProducts.map(p => ({
+      name: p.name,
+      category: p.category,
+      quantity: p.quantity,
+      price: p.price,
+      supplier_name: p.supplier,
+      location: p.location,
+      expiry_date: p.expiryDate || null,
+      barcode: p.barcode,
+      min_stock: p.minStock,
+      image_url: p.imageUrl || null,
+      status: getStatus(p.quantity, p.minStock)
     }));
-    // Record movements
-    billItems.forEach(it => {
-      addMovement({ productId: it.productId, productName: it.productName, action: 'Imported', quantityChange: it.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
-    });
-    // Update supplier orders count
-    setSuppliers(prev => prev.map(s => s.id === supplierId ? { ...s, totalOrders: s.totalOrders + 1 } : s));
-    addNotification(`Supplier bill ${billId} created — ₹${grandTotal.toLocaleString()} from ${supplierName}`, 'success');
-    // Check for newly sufficient stock
-    billItems.forEach(it => {
+
+    const { data } = await supabase.from('products').insert(payloads).select();
+
+    if (data) {
+      const created = data.map(mapProduct);
+      setProducts(prev => [...created, ...prev]);
+      
+      const userName = currentUser?.name || 'System';
+      created.forEach(p => {
+        addMovement({ productId: p.id, productName: p.name, action: 'Added', quantityChange: p.quantity, date: new Date().toISOString().split('T')[0], user: userName });
+        addNotification(`New product added: ${p.name}`, 'success');
+      });
+    }
+  }, [addMovement, addNotification, currentUser]);
+
+  const updateProduct = useCallback(async (id: number, updates: Partial<Product>) => {
+    const payload: any = {};
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.category !== undefined) payload.category = updates.category;
+    if (updates.quantity !== undefined) payload.quantity = updates.quantity;
+    if (updates.price !== undefined) payload.price = updates.price;
+    if (updates.supplier !== undefined) payload.supplier_name = updates.supplier;
+    if (updates.location !== undefined) payload.location = updates.location;
+    if (updates.expiryDate !== undefined) payload.expiry_date = updates.expiryDate || null;
+    if (updates.barcode !== undefined) payload.barcode = updates.barcode;
+    if (updates.imageUrl !== undefined) payload.image_url = updates.imageUrl;
+    if (updates.minStock !== undefined) payload.min_stock = updates.minStock;
+    if (updates.quantity !== undefined || updates.minStock !== undefined) {
+      const q = updates.quantity ?? products.find(p => p.id === id)?.quantity ?? 0;
+      const m = updates.minStock ?? products.find(p => p.id === id)?.minStock ?? 10;
+      payload.status = getStatus(q, m);
+    }
+    
+    const { error } = await supabase.from('products').update(payload).eq('id', id);
+    if (!error) {
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updates, status: payload.status || p.status } : p));
+      addNotification(`Product updated`, 'success');
+    }
+  }, [products, getStatus, addNotification]);
+
+  const deleteProduct = useCallback(async (id: number) => {
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (!error) {
+      setProducts(prev => prev.filter(p => p.id !== id));
+      addNotification(`Product deleted`, 'info');
+    }
+  }, [addNotification]);
+
+  const addSupplier = useCallback(async (supplier: Omit<Supplier, 'id'>) => {
+    const { data } = await supabase.from('suppliers').insert([{
+      name: supplier.name, contact_person: supplier.contactPerson, phone: supplier.phone,
+      email: supplier.email, total_orders: supplier.totalOrders, rating: supplier.rating
+    }]).select();
+    if (data) {
+      setSuppliers(prev => [...prev, mapSupplier(data[0])]);
+      addNotification(`Supplier ${supplier.name} added`, 'success');
+    }
+  }, [addNotification]);
+
+  const updateSupplier = useCallback(async (id: number, updates: Partial<Supplier>) => {
+    const payload: any = {};
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.contactPerson !== undefined) payload.contact_person = updates.contactPerson;
+    if (updates.phone !== undefined) payload.phone = updates.phone;
+    if (updates.email !== undefined) payload.email = updates.email;
+    if (updates.totalOrders !== undefined) payload.total_orders = updates.totalOrders;
+    if (updates.rating !== undefined) payload.rating = updates.rating;
+
+    const { error } = await supabase.from('suppliers').update(payload).eq('id', id);
+    if (!error) {
+      setSuppliers(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+      addNotification(`Supplier updated`, 'success');
+    }
+  }, [addNotification]);
+
+  const deleteSupplier = useCallback(async (id: number) => {
+    const { error } = await supabase.from('suppliers').delete().eq('id', id);
+    if (!error) {
+      setSuppliers(prev => prev.filter(s => s.id !== id));
+      addNotification(`Supplier deleted`, 'info');
+    }
+  }, [addNotification]);
+
+  const updateOrderStatus = useCallback(async (id: string, newStatus: PurchaseOrder['status']) => {
+    const { error } = await supabase.from('purchase_orders').update({ status: newStatus }).eq('id', id);
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+
+    const order = orders.find(o => o.id === id);
+    if (!order) return;
+
+    if (order.status !== 'Delivered' && newStatus === 'Delivered') {
+      // Update supplier on-time delivery metrics
+      const supplier = suppliers.find(s => s.name === order.supplier);
+      if (supplier) {
+        const newTotalDelivered = (supplier.totalDelivered || 0) + 1;
+        const newOnTimeCount = (supplier.onTimeCount || 0) + 1;
+        const newOnTimePercent = (newOnTimeCount / newTotalDelivered) * 100;
+
+        await supabase.from('suppliers').update({
+          total_delivered: newTotalDelivered,
+          on_time_count: newOnTimeCount,
+          on_time_delivery: newOnTimePercent
+        }).eq('id', supplier.id);
+
+        setSuppliers(currSupps => currSupps.map(s =>
+          s.id === supplier.id
+            ? { ...s, totalDelivered: newTotalDelivered, onTimeCount: newOnTimeCount, onTimeDeliveryPercent: newOnTimePercent }
+            : s
+        ));
+      }
+
+      // Update product stock for each order item
+      if (order.orderItems && order.orderItems.length > 0) {
+        for (const it of order.orderItems) {
+          const product = products.find(p => p.id === it.productId);
+          if (product) {
+            const newQty = product.quantity + it.quantity;
+            const newStockStatus = getStatus(newQty, product.minStock);
+            await supabase.from('products').update({ quantity: newQty, status: newStockStatus }).eq('id', product.id);
+            setProducts(currProds => currProds.map(p =>
+              p.id === product.id ? { ...p, quantity: newQty, status: newStockStatus } : p
+            ));
+            const userName = currentUser?.name || 'System';
+            addMovement({ productId: product.id, productName: product.name, action: 'Purchased', quantityChange: it.quantity, date: new Date().toISOString().split('T')[0], user: userName });
+            addNotification(`${product.name} stock increased by ${it.quantity} via PO ${id}`, 'success');
+          }
+        }
+      }
+    }
+  }, [orders, suppliers, products, addMovement, addNotification, currentUser, getStatus]);
+
+  const addSupplierBill = useCallback(async (supplierId: number, supplierName: string, items: Omit<SupplierBillItem, 'total'>[]) => {
+    const billItems = items.map(it => ({ ...it, total: it.quantity * it.price }));
+    const grandTotal = billItems.reduce((s, it) => s + it.total, 0);
+    const billId = `SUP-${Date.now()}`;
+    const date = new Date().toISOString().split('T')[0];
+    const createdBy = currentUser?.name || 'System';
+
+    // 1. Insert Bill
+    await supabase.from('supplier_bills').insert([{
+      id: billId, supplier_id: supplierId, supplier_name: supplierName, total_amount: grandTotal, date, created_by: createdBy
+    }]);
+
+    // 2. Insert Bill Items
+    const itemsPayload = billItems.map(it => ({
+      bill_id: billId, product_id: it.productId, product_name: it.productName, quantity: it.quantity, price: it.price, total: it.total
+    }));
+    await supabase.from('supplier_bill_items').insert(itemsPayload);
+
+    // 3. Update Supplier Context Model
+    const newBill: SupplierBill = { id: billId, supplierId, supplierName, items: billItems, grandTotal, date, createdBy };
+    setSupplierBills(prev => [newBill, ...prev]);
+
+    // 4. Update Product Stock
+    billItems.forEach(async it => {
       const product = products.find(p => p.id === it.productId);
-      if (product && product.quantity <= product.minStock && (product.quantity + it.quantity) > product.minStock) {
-        addNotification(`${it.productName} stock replenished to ${product.quantity + it.quantity} units`, 'info');
+      if (product) {
+        const newQty = product.quantity + it.quantity;
+        const newStockStatus = getStatus(newQty, product.minStock);
+        await supabase.from('products').update({ quantity: newQty, status: newStockStatus }).eq('id', product.id);
+        setProducts(prev => prev.map(p => p.id === product.id ? { ...p, quantity: newQty, status: newStockStatus } : p));
+        
+        addMovement({ productId: it.productId, productName: it.productName, action: 'Imported', quantityChange: it.quantity, date, user: createdBy });
+        
+        if (product.quantity <= product.minStock && newQty > product.minStock) {
+           addNotification(`${it.productName} stock replenished to ${newQty} units`, 'info');
+        }
       }
     });
-  }, [supplierBills.length, currentUser.name, addMovement, addNotification, getStatus, products]);
 
-  const addCustomerBill = useCallback((customerName: string, items: Omit<CustomerBillItem, 'total'>[]): { success: boolean; error?: string } => {
-    // Validate stock
+    const targetSupplier = suppliers.find(s => s.id === supplierId);
+    if (targetSupplier) {
+       await supabase.from('suppliers').update({ total_orders: targetSupplier.totalOrders + 1 }).eq('id', supplierId);
+       setSuppliers(prev => prev.map(s => s.id === supplierId ? { ...s, totalOrders: s.totalOrders + 1 } : s));
+    }
+
+    addNotification(`Supplier bill ${billId} created — ₹${grandTotal.toLocaleString()} from ${supplierName}`, 'success');
+  }, [currentUser, products, suppliers, addMovement, addNotification]);
+
+  const addCustomerBill = useCallback(async (customerName: string, items: Omit<CustomerBillItem, 'total'>[]): Promise<{ success: boolean; error?: string }> => {
     for (const it of items) {
       const product = products.find(p => p.id === it.productId);
       if (!product) return { success: false, error: `Product not found.` };
       if (it.quantity > product.quantity) return { success: false, error: `Not enough inventory available for ${product.name}. Available: ${product.quantity}` };
     }
-    const billItems: CustomerBillItem[] = items.map(it => ({ ...it, total: it.quantity * it.price }));
+
+    const billItems = items.map(it => ({ ...it, total: it.quantity * it.price }));
     const grandTotal = billItems.reduce((s, it) => s + it.total, 0);
-    const billId = `CUS-${String(customerBills.length + 1).padStart(3, '0')}`;
-    const bill: CustomerBill = {
-      id: billId, customerName, items: billItems, grandTotal,
-      date: new Date().toISOString().split('T')[0], createdBy: currentUser.name,
-    };
-    setCustomerBills(prev => [bill, ...prev]);
-    // Decrease product quantities
-    setProducts(prev => prev.map(p => {
-      const item = billItems.find(it => it.productId === p.id);
-      if (!item) return p;
-      const newQty = p.quantity - item.quantity;
-      return { ...p, quantity: newQty, status: getStatus(newQty, p.minStock) };
+    const billId = `CUS-${Date.now()}`;
+    const date = new Date().toISOString().split('T')[0];
+    const createdBy = currentUser?.name || 'System';
+
+    await supabase.from('customer_bills').insert([{
+      id: billId, customer_name: customerName, total_amount: grandTotal, date, created_by: createdBy
+    }]);
+
+    const itemsPayload = billItems.map(it => ({
+      bill_id: billId, product_id: it.productId, product_name: it.productName, quantity: it.quantity, price: it.price, total: it.total
     }));
-    // Record movements
-    billItems.forEach(it => {
-      addMovement({ productId: it.productId, productName: it.productName, action: 'Exported', quantityChange: -it.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
-    });
-    addNotification(`Customer bill ${billId} created — ₹${grandTotal.toLocaleString()} for ${customerName}`, 'success');
-    // Check for low stock after sale
-    billItems.forEach(it => {
+    await supabase.from('customer_bill_items').insert(itemsPayload);
+
+    const newBill: CustomerBill = { id: billId, customerName, items: billItems, grandTotal, date, createdBy };
+    setCustomerBills(prev => [newBill, ...prev]);
+
+    billItems.forEach(async it => {
       const product = products.find(p => p.id === it.productId);
       if (product) {
         const newQty = product.quantity - it.quantity;
+        const newStockStatus = getStatus(newQty, product.minStock);
+        await supabase.from('products').update({ quantity: newQty, status: newStockStatus }).eq('id', product.id);
+        setProducts(prev => prev.map(p => p.id === product.id ? { ...p, quantity: newQty, status: newStockStatus } : p));
+        
+        addMovement({ productId: it.productId, productName: it.productName, action: 'Exported', quantityChange: -it.quantity, date, user: createdBy });
+        
         if (newQty > 0 && newQty <= product.minStock) {
           addNotification(`Low stock alert: ${it.productName} only ${newQty} units remaining`, 'warning');
         }
       }
     });
+
+    addNotification(`Customer bill ${billId} created — ₹${grandTotal.toLocaleString()} for ${customerName}`, 'success');
     return { success: true };
-  }, [customerBills.length, products, currentUser.name, addMovement, addNotification, getStatus]);
+  }, [currentUser, products, addMovement, addNotification]);
 
-  // Derived data
   const lowStockProducts = products.filter(p => p.quantity > 0 && p.quantity <= p.minStock);
-
+  const today = new Date();
+  
   const expiringProducts = products.filter(p => {
     if (!p.expiryDate) return false;
     const diff = (new Date(p.expiryDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
@@ -432,11 +660,20 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     supplier: p.supplier,
   }));
 
+  if (isLoading) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', flexDirection: 'column', gap: '1rem' }}>
+        <Loader2 className="animate-spin" size={48} color="#3b82f6" />
+        <p style={{ color: '#64748b', fontWeight: 500 }}>Connecting to Cloud Database...</p>
+      </div>
+    );
+  }
+
   return (
     <InventoryContext.Provider value={{
-      products, suppliers, users, movements, orders, supplierBills, customerBills, notifications, unreadCount, currentUser,
+      products, suppliers, users, movements, orders, supplierBills, customerBills, notifications, unreadCount, currentUser, isLoading,
       setProducts, setSuppliers, setUsers, setOrders,
-      addMovement, addProducts, getStatus, updateOrderStatus, addSupplierBill, addCustomerBill,
+      addMovement, addProducts, updateProduct, deleteProduct, addSupplier, updateSupplier, deleteSupplier, getStatus, updateOrderStatus, addSupplierBill, addCustomerBill,
       addNotification, markNotificationRead, markAllNotificationsRead,
       lowStockProducts, expiringProducts, stockForecasts, reorderSuggestions,
     }}>

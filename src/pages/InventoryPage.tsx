@@ -1,13 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import { Plus, Edit2, Trash2, Search, Upload, MapPin, Calendar, Barcode } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Upload, MapPin, Calendar, Barcode, Image as ImageIcon } from 'lucide-react';
 
 const categories = ['All', 'Groceries', 'Electronics', 'Stationery', 'Household Items', 'Clothing'];
 const stockFilters = ['All', 'In Stock', 'Low Stock', 'Out of Stock'];
 const statusClass: Record<string, string> = { 'In Stock': 'badge-success', 'Low Stock': 'badge-warning', 'Out of Stock': 'badge-danger' };
 
 const InventoryPage: React.FC = () => {
-  const { products, setProducts, suppliers, addMovement, addProducts, getStatus, currentUser } = useInventory();
+  const { products, suppliers, addMovement, addProducts, updateProduct, deleteProduct, getStatus, currentUser } = useInventory();
   const [activeCategory, setActiveCategory] = useState('All');
   const [stockFilter, setStockFilter] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,23 +38,23 @@ const InventoryPage: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleSave = () => {
-    const status = getStatus(form.quantity, form.minStock);
+  const handleSave = async () => {
     if (editingProduct) {
-      setProducts(products.map(p => p.id === editingProduct.id ? { ...p, ...form, status } : p));
-      addMovement({ productId: editingProduct.id, productName: form.name, action: 'Updated', quantityChange: form.quantity - editingProduct.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
+      const status = getStatus(form.quantity, form.minStock);
+      await updateProduct(editingProduct.id, { ...form, status });
+      if (form.quantity !== editingProduct.quantity) {
+        await addMovement({ productId: editingProduct.id, productName: form.name, action: 'Updated', quantityChange: form.quantity - editingProduct.quantity, date: new Date().toISOString().split('T')[0], user: currentUser?.name || 'System' });
+      }
     } else {
-      const id = Date.now();
-      const barcode = `${form.category.substring(0, 3).toUpperCase()}-${String(id).slice(-3)}-2024`;
-      setProducts([...products, { id, ...form, status, barcode, avgDailySales: Math.max(1, Math.floor(Math.random() * 5)) }]);
-      addMovement({ productId: id, productName: form.name, action: 'Added', quantityChange: form.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
+      const barcode = `${form.category.substring(0, 3).toUpperCase()}-${String(Date.now()).slice(-3)}-2024`;
+      await addProducts([{ ...form, barcode, avgDailySales: Math.max(1, Math.floor(Math.random() * 5)) }]);
     }
     setShowModal(false);
   };
 
-  const handleDelete = (p: typeof products[0]) => {
-    setProducts(products.filter(pr => pr.id !== p.id));
-    addMovement({ productId: p.id, productName: p.name, action: 'Removed', quantityChange: -p.quantity, date: new Date().toISOString().split('T')[0], user: currentUser.name });
+  const handleDelete = async (p: typeof products[0]) => {
+    await deleteProduct(p.id);
+    await addMovement({ productId: p.id, productName: p.name, action: 'Removed', quantityChange: -p.quantity, date: new Date().toISOString().split('T')[0], user: currentUser?.name || 'System' });
   };
 
   // CSV Import
@@ -127,7 +127,7 @@ const InventoryPage: React.FC = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th style={{ width: 44 }}></th>
+              <th style={{ width: 50 }}></th>
               <th>Product</th>
               <th>Category</th>
               <th>Location</th>
@@ -145,9 +145,9 @@ const InventoryPage: React.FC = () => {
               <tr key={p.id} style={{ background: p.status === 'Low Stock' ? 'rgba(239,68,68,0.03)' : p.status === 'Out of Stock' ? 'rgba(239,68,68,0.06)' : undefined }}>
                 <td>
                   {p.imageUrl ? (
-                    <img src={p.imageUrl} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'cover' }} />
+                    <img src={p.imageUrl} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }} />
                   ) : (
-                    <div style={{ width: 36, height: 36, borderRadius: 8, background: '#f1f1f5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '0.7rem' }}>IMG</div>
+                    <div style={{ width: 40, height: 40, borderRadius: 8, background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}><ImageIcon size={18} /></div>
                   )}
                 </td>
                 <td style={{ fontWeight: 600, cursor: 'pointer', color: '#2563eb' }} onClick={() => setShowDetailModal(p.id)}>{p.name}</td>
