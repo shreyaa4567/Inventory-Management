@@ -1,5 +1,4 @@
 -- Supabase Schema for Inventory Management System
--- Copy and paste this entirely into the Supabase SQL Editor and run it.
 
 -- 1. Create Suppliers Table
 CREATE TABLE public.suppliers (
@@ -117,5 +116,14 @@ CREATE TABLE public.customer_bill_items (
     total NUMERIC NOT NULL
 );
 
--- Note: Row Level Security (RLS) is disabled by default for these tables since it's a new project.
--- If you want to enable it later, you can do so in the Supabase Dashboard Authentication settings.
+-- Add on-time delivery tracking columns to suppliers
+ALTER TABLE public.suppliers
+ADD COLUMN IF NOT EXISTS total_delivered INTEGER DEFAULT 0,
+ADD COLUMN IF NOT EXISTS on_time_count INTEGER DEFAULT 0,
+ADD COLUMN IF NOT EXISTS on_time_delivery NUMERIC DEFAULT 0;
+
+-- Add image_url column to products
+ALTER TABLE public.products
+ADD COLUMN IF NOT EXISTS image_url TEXT;
+
+

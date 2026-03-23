@@ -164,7 +164,7 @@ The app will be available at `http://localhost:5173`
 
 ## 👤 Author
 
-**Meena Kumar**
+**SHREYA SINGH**
 
 ---
 
