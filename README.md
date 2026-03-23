@@ -129,36 +129,22 @@ movement_records.product_id → products.id (CASCADE)
 
 ### 1. Clone the repository
 ```bash
-git clone <repository-url>
+git clone https://github.com/shreyaa4567/Inventory-Management
 cd inventory-management
 ```
 
-### 2. Install dependencies
-```bash
-npm install
-```
-
-### 3. Create `.env.local` with Supabase credentials
+### 2. Create `.env.local` with Supabase credentials
 ```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_URL=https://jbnvuiwrclfafoxfqiip.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
-### 4. Set up the database
+### 3. Set up the database
 Copy and paste the contents of `supabase_schema.sql` into the **Supabase SQL Editor** and run it. This creates all 10 tables with proper relationships.
-
-### 5. Run the development server
-```bash
-npm run dev
-```
-
-The app will be available at `http://localhost:5173`
-
----
 
 ## 🌐 Live Demo
 
-🔗 **[https://inventory-management-two-beige.vercel.app/](https://inventory-management-two-beige.vercel.app/)**
+🔗 **[https://inventory-management-two-beige.vercel.app/dashboard](https://inventory-management-two-beige.vercel.app/dashboard)**
 
 ---
 
