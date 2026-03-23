@@ -101,7 +101,7 @@ movement_records.product_id → products.id (CASCADE)
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | React 18, TypeScript |
+| **Frontend** | React 19, TypeScript |
 | **Styling** | Tailwind CSS |
 | **Build Tool** | Vite |
 | **Icons** | Lucide React |
@@ -133,14 +133,21 @@ git clone https://github.com/shreyaa4567/Inventory-Management
 cd inventory-management
 ```
 
-### 2. Create `.env.local` with Supabase credentials
+### 2. Install dependencies
+```bash
+npm install
+```
+
+### 3. Create `.env.local` with Supabase credentials
 ```env
 VITE_SUPABASE_URL=https://jbnvuiwrclfafoxfqiip.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
-### 3. Set up the database
+### 4. Set up the database
 Copy and paste the contents of `supabase_schema.sql` into the **Supabase SQL Editor** and run it. This creates all 10 tables with proper relationships.
+
+---
 
 ## 🌐 Live Demo
 
